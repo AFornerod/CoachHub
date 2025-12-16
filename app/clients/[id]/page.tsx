@@ -220,6 +220,38 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
           </Card>
         </div>
 
+        <div className="grid gap-4 md:grid-cols-3">
+          <Button variant="outline" asChild className="h-auto py-4">
+            <Link href={`/clients/${client.id}/coaching-plan/new`}>
+              <div className="text-center w-full">
+                <Target className="h-6 w-6 mx-auto mb-2" />
+                <div className="font-semibold">Plan de Coaching</div>
+                <p className="text-xs text-gray-600 mt-1">Crear plan estructurado</p>
+              </div>
+            </Link>
+          </Button>
+
+          <Button variant="outline" asChild className="h-auto py-4">
+            <Link href={`/clients/${client.id}/progress`}>
+              <div className="text-center w-full">
+                <FileText className="h-6 w-6 mx-auto mb-2" />
+                <div className="font-semibold">Progreso y Logros</div>
+                <p className="text-xs text-gray-600 mt-1">Ver avances del cliente</p>
+              </div>
+            </Link>
+          </Button>
+
+          <Button variant="outline" asChild className="h-auto py-4">
+            <Link href={`/sessions/new?clientId=${client.id}`}>
+              <div className="text-center w-full">
+                <Plus className="h-6 w-6 mx-auto mb-2" />
+                <div className="font-semibold">Nueva Sesión</div>
+                <p className="text-xs text-gray-600 mt-1">Agendar sesión de coaching</p>
+              </div>
+            </Link>
+          </Button>
+        </div>
+
         {client.notes && (
           <Card>
             <CardHeader>
