@@ -4,6 +4,7 @@ import { ReactNode, useEffect, useState } from 'react'
 import { Navbar } from '@/components/navigation/navbar'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
+import { ChatWidget } from '@/components/ai-assistant/ChatWidget'
 
 interface DashboardLayoutProps {
   children: ReactNode
@@ -63,6 +64,13 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
       <main className="container mx-auto px-4 py-8">
         {children}
       </main>
+      <ChatWidget
+        coachContext={{
+          name: user.name,
+          type: user.coaching_type?.[0] || 'Coaching',
+          method: user.coaching_method?.[0] || 'General',
+        }}
+      />
     </div>
   )
 }
