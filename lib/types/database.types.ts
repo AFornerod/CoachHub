@@ -108,6 +108,45 @@ export interface ActionPlan {
   created_at: string
 }
 
+export interface CompetencyFramework {
+  id: string
+  name: string
+  description: string
+  coach_id: string
+  is_public: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface Competency {
+  id: string
+  framework_id: string
+  name: string
+  description: string
+  order_index: number
+  created_at: string
+}
+
+export interface CompetencyEvaluation {
+  id: string
+  client_id: string
+  framework_id: string
+  coach_id: string
+  evaluation_date: string
+  notes: string
+  created_at: string
+  updated_at: string
+}
+
+export interface CompetencyScore {
+  id: string
+  evaluation_id: string
+  competency_id: string
+  score: number
+  notes: string
+  created_at: string
+}
+
 export const PLAN_LIMITS = {
   starter: { maxClients: 10, hasAI: true, hasMetrics: true },
   professional: { maxClients: 30, hasAI: true, hasMetrics: true },

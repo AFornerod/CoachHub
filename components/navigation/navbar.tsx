@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { Brain, LayoutDashboard, Users, Calendar, DollarSign, Settings, LogOut } from 'lucide-react'
+import { Brain, LayoutDashboard, Users, Calendar, DollarSign, Settings, LogOut, BarChart3 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -29,6 +29,7 @@ const navLinks = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/clients', label: 'Clientes', icon: Users },
   { href: '/sessions', label: 'Sesiones', icon: Calendar },
+  { href: '/frameworks', label: 'Evaluaciones', icon: BarChart3 },
   { href: '/payments', label: 'Pagos', icon: DollarSign },
 ]
 
