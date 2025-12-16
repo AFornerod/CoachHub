@@ -4,9 +4,12 @@ import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { DashboardLayout } from '@/components/layouts/dashboard-layout';
 import { SessionResultForm } from '@/components/sessions/SessionResultForm';
+import { BehaviorTracker } from '@/components/behavior/BehaviorTracker';
+import { BehaviorTimeline } from '@/components/behavior/BehaviorTimeline';
 import { createClient } from '@/lib/supabase/client';
 import { ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import Link from 'next/link';
 
 export default function SessionResultsPage() {
@@ -74,7 +77,7 @@ export default function SessionResultsPage() {
 
   return (
     <DashboardLayout>
-      <div className="max-w-4xl mx-auto space-y-6">
+      <div className="max-w-6xl mx-auto space-y-6">
         <div className="flex items-center gap-4">
           <Button variant="ghost" size="icon" onClick={() => router.back()}>
             <ArrowLeft className="h-5 w-5" />
@@ -87,11 +90,35 @@ export default function SessionResultsPage() {
           </div>
         </div>
 
-        <SessionResultForm
-          sessionId={sessionId}
-          initialData={initialData}
-          onSave={() => router.back()}
-        />
+        <Tabs defaultValue="results" className="space-y-6">
+          <TabsList>
+            <TabsTrigger value="results">Resultados</TabsTrigger>
+            <TabsTrigger value="behaviors">Comportamientos</TabsTrigger>
+            <TabsTrigger value="timeline">Historial</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="results">
+            <SessionResultForm
+              sessionId={sessionId}
+              initialData={initialData}
+              onSave={() => router.back()}
+            />
+          </TabsContent>
+
+          <TabsContent value="behaviors">
+            <BehaviorTracker
+              clientId={session.client_id}
+              sessionId={sessionId}
+            />
+          </TabsContent>
+
+          <TabsContent value="timeline">
+            <BehaviorTimeline
+              clientId={session.client_id}
+              sessionId={sessionId}
+            />
+          </TabsContent>
+        </Tabs>
       </div>
     </DashboardLayout>
   );

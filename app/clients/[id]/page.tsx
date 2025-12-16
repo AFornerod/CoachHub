@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
-import { Mail, Phone, Calendar, Target, FileText, ArrowLeft, Edit, Plus, BarChart3 } from 'lucide-react'
+import { Mail, Phone, Calendar, Target, FileText, ArrowLeft, Edit, Plus, BarChart3, Activity } from 'lucide-react'
 import Link from 'next/link'
 import { format, parseISO } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -220,7 +220,7 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
           </Card>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
           <Button variant="outline" asChild className="h-auto py-4">
             <Link href={`/clients/${client.id}/coaching-plan/new`}>
               <div className="text-center w-full">
@@ -237,6 +237,16 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
                 <BarChart3 className="h-6 w-6 mx-auto mb-2" />
                 <div className="font-semibold">Evaluaciones</div>
                 <p className="text-xs text-gray-600 mt-1">Evaluar competencias</p>
+              </div>
+            </Link>
+          </Button>
+
+          <Button variant="outline" asChild className="h-auto py-4">
+            <Link href={`/clients/${client.id}/patterns`}>
+              <div className="text-center w-full">
+                <Activity className="h-6 w-6 mx-auto mb-2" />
+                <div className="font-semibold">Patrones</div>
+                <p className="text-xs text-gray-600 mt-1">Analizar comportamientos</p>
               </div>
             </Link>
           </Button>
