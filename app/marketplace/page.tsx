@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { CoachCard } from "@/components/marketplace/CoachCard";
 import { SearchFilters } from "@/components/marketplace/SearchFilters";
+import { MarketplaceNavbar } from "@/components/marketplace/MarketplaceNavbar"; // ← AGREGAR ESTA LÍNEA
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -194,6 +195,10 @@ export default function MarketplacePage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
+      {/* ← AGREGAR EL NAVBAR AQUÍ */}
+      <MarketplaceNavbar />
+      
+      {/* Hero Section */}
       <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
           <div className="text-center">

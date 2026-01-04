@@ -3,10 +3,14 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { DashboardLayout } from '@/components/layouts/dashboard-layout';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { createClient } from '@/lib/supabase/client';
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -20,8 +24,13 @@ import {
   CheckCircle,
   Video,
   MapPin,
+  Save,
+  Star,
+  MessageSquare,
+  Heart,
 } from 'lucide-react';
 import Link from 'next/link';
+import { useToast } from '@/hooks/use-toast';
 
 interface Session {
   id: string;
@@ -46,8 +55,13 @@ interface Session {
   homework_assigned: any;
   client_feedback: string;
   coach_observations: string;
+  // Campos del cliente
+  client_notes: string;
+  client_reflection: string;
+  session_rating: number | null;
+  session_feedback: string;
   clients: {
-    name: string;
+    full_name: string;
     email: string;
   };
 }
@@ -55,9 +69,16 @@ interface Session {
 export default function SessionDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const { toast } = useToast();
   const sessionId = params.id as string;
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  
+  // Estados para edición
+  const [isEditing, setIsEditing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [coachNotes, setCoachNotes] = useState('');
+  const [sessionTitle, setSessionTitle] = useState('');
 
   useEffect(() => {
     loadSession();
@@ -66,19 +87,72 @@ export default function SessionDetailPage() {
   async function loadSession() {
     const supabase = createClient();
 
+    console.log('📅 Loading session:', sessionId);
+
     const { data, error } = await supabase
       .from('sessions')
-	.select('*, clients(full_name, email)') 
+      .select('*, clients(full_name, email)')
       .eq('id', sessionId)
       .maybeSingle();
+
+    console.log('📊 Session data:', data);
+    console.log('❌ Session error:', error);
 
     if (error) {
       console.error('Error loading session:', error);
     } else {
       setSession(data);
+      setCoachNotes(data?.notes || '');
+      setSessionTitle(data?.title || '');
     }
 
     setLoading(false);
+  }
+
+  async function handleSave() {
+    if (!session) return;
+
+    setIsSaving(true);
+
+    try {
+      const supabase = createClient();
+      console.log('💾 Saving coach notes for session:', session.id);
+
+      const { data, error } = await supabase
+        .from('sessions')
+        .update({
+          notes: coachNotes,
+          title: sessionTitle,
+        })
+        .eq('id', session.id)
+        .select();
+
+      console.log('✅ Save response:', data);
+      console.log('❌ Save error:', error);
+
+      if (error) {
+        console.error('Error details:', error);
+        throw new Error(error.message);
+      }
+
+      toast({
+        title: '¡Guardado!',
+        description: 'Las notas se han guardado correctamente',
+      });
+
+      setIsEditing(false);
+      await loadSession();
+
+    } catch (error: any) {
+      console.error('Error saving:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Error al guardar',
+        description: error.message || 'No se pudieron guardar las notas',
+      });
+    } finally {
+      setIsSaving(false);
+    }
   }
 
   function getStatusColor(status: string) {
@@ -124,6 +198,15 @@ export default function SessionDetailPage() {
     }
   }
 
+  const getInitials = (name: string) => {
+    return name
+      ?.split(' ')
+      .map(n => n[0])
+      .join('')
+      .toUpperCase()
+      .slice(0, 2) || 'C';
+  };
+
   if (loading) {
     return (
       <DashboardLayout>
@@ -158,7 +241,7 @@ export default function SessionDetailPage() {
             <div>
               <h1 className="text-3xl font-bold text-slate-900">{session.title}</h1>
               <p className="text-slate-600 mt-1">
-                {session.clients?.name} - Sesión {session.session_number || 'N/A'}
+                {session.clients?.full_name} - Sesión {session.session_number || 'N/A'}
               </p>
             </div>
           </div>
@@ -198,6 +281,23 @@ export default function SessionDetailPage() {
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
+            {session.clients && (
+              <>
+                <div className="flex items-center gap-4">
+                  <Avatar className="h-12 w-12">
+                    <AvatarFallback className="bg-gradient-to-br from-blue-500 to-purple-600 text-white">
+                      {getInitials(session.clients.full_name)}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div>
+                    <p className="font-semibold text-slate-900">{session.clients.full_name}</p>
+                    <p className="text-sm text-slate-600">{session.clients.email}</p>
+                  </div>
+                </div>
+                <Separator />
+              </>
+            )}
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="flex items-center gap-3">
                 <Calendar className="h-5 w-5 text-slate-500" />
@@ -226,7 +326,7 @@ export default function SessionDetailPage() {
                 <User className="h-5 w-5 text-slate-500" />
                 <div>
                   <p className="text-sm text-slate-600">Cliente</p>
-                  <p className="font-medium">{session.clients?.name}</p>
+                  <p className="font-medium">{session.clients?.full_name}</p>
                 </div>
               </div>
 
@@ -242,16 +342,6 @@ export default function SessionDetailPage() {
                 </div>
               </div>
             </div>
-
-            {session.notes && (
-              <>
-                <Separator />
-                <div>
-                  <h4 className="font-semibold mb-2">Descripción</h4>
-                  <p className="text-slate-700 whitespace-pre-wrap">{session.notes}</p>
-                </div>
-              </>
-            )}
 
             {session.session_focus && session.session_focus.length > 0 && (
               <>
@@ -270,6 +360,156 @@ export default function SessionDetailPage() {
             )}
           </CardContent>
         </Card>
+
+        {/* Coach Notes (Editable) */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <FileText className="h-5 w-5" />
+                  Notas del Coach
+                </CardTitle>
+                <CardDescription>Tus notas sobre esta sesión</CardDescription>
+              </div>
+              {!isEditing && (
+                <Button onClick={() => setIsEditing(true)} variant="outline" size="sm">
+                  <Edit className="h-4 w-4 mr-2" />
+                  Editar
+                </Button>
+              )}
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {isEditing ? (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="title">Título de la Sesión</Label>
+                  <Input
+                    id="title"
+                    value={sessionTitle}
+                    onChange={(e) => setSessionTitle(e.target.value)}
+                    placeholder="Ej: Acuerdo de Coaching"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="coachNotes">Notas</Label>
+                  <Textarea
+                    id="coachNotes"
+                    value={coachNotes}
+                    onChange={(e) => setCoachNotes(e.target.value)}
+                    rows={6}
+                    placeholder="Escribe tus notas sobre la sesión..."
+                  />
+                </div>
+
+                <div className="flex gap-2">
+                  <Button onClick={handleSave} disabled={isSaving}>
+                    {isSaving ? (
+                      'Guardando...'
+                    ) : (
+                      <>
+                        <Save className="h-4 w-4 mr-2" />
+                        Guardar
+                      </>
+                    )}
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      setIsEditing(false);
+                      setCoachNotes(session.notes || '');
+                      setSessionTitle(session.title || '');
+                    }}
+                    variant="outline"
+                    disabled={isSaving}
+                  >
+                    Cancelar
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <div className="prose max-w-none">
+                {coachNotes ? (
+                  <p className="text-slate-700 whitespace-pre-wrap">{coachNotes}</p>
+                ) : (
+                  <p className="text-slate-400 italic">No hay notas del coach aún</p>
+                )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Client Notes (Read-only for coach) */}
+        {(session.client_notes || session.client_reflection || session.session_rating || session.session_feedback) && (
+          <Card className="border-2 border-purple-200 bg-purple-50/50">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-purple-900">
+                <Heart className="h-5 w-5 text-purple-600" />
+                Notas y Reflexiones del Cliente
+              </CardTitle>
+              <CardDescription>Lo que tu cliente escribió sobre esta sesión</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {session.client_notes && (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <MessageSquare className="h-4 w-4 text-purple-600" />
+                    <Label className="text-purple-900 font-semibold">Notas Personales</Label>
+                  </div>
+                  <div className="bg-white p-4 rounded-lg border border-purple-200">
+                    <p className="text-slate-700 whitespace-pre-wrap">{session.client_notes}</p>
+                  </div>
+                </div>
+              )}
+
+              {session.client_reflection && (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle className="h-4 w-4 text-purple-600" />
+                    <Label className="text-purple-900 font-semibold">Reflexión</Label>
+                  </div>
+                  <div className="bg-white p-4 rounded-lg border border-purple-200">
+                    <p className="text-slate-700 whitespace-pre-wrap">{session.client_reflection}</p>
+                  </div>
+                </div>
+              )}
+
+              {session.session_rating && (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Star className="h-4 w-4 text-purple-600" />
+                    <Label className="text-purple-900 font-semibold">Calificación de la Sesión</Label>
+                  </div>
+                  <div className="flex gap-1">
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <Star
+                        key={star}
+                        className={`h-6 w-6 ${
+                          star <= (session.session_rating || 0)
+                            ? 'fill-yellow-400 text-yellow-400'
+                            : 'text-slate-300'
+                        }`}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {session.session_feedback && (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <MessageSquare className="h-4 w-4 text-purple-600" />
+                    <Label className="text-purple-900 font-semibold">Feedback del Cliente</Label>
+                  </div>
+                  <div className="bg-white p-4 rounded-lg border border-purple-200">
+                    <p className="text-slate-700 whitespace-pre-wrap">{session.session_feedback}</p>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         {session.status === 'completed' && (
           <>
@@ -386,20 +626,6 @@ export default function SessionDetailPage() {
               </Card>
             )}
           </>
-        )}
-
-        {session.notes && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <FileText className="h-5 w-5" />
-                Notas
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-slate-700 whitespace-pre-wrap">{session.notes}</p>
-            </CardContent>
-          </Card>
         )}
       </div>
     </DashboardLayout>

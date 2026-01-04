@@ -3,7 +3,7 @@
 import { DashboardLayout } from '@/components/layouts/dashboard-layout'
 import { createClient } from '@/lib/supabase/client'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Users, Calendar, DollarSign, TrendingUp, Clock, Target, Activity } from 'lucide-react'
+import { Users, Calendar, DollarSign, TrendingUp, Clock, Target, Activity, Bell, Mail, ArrowRight } from 'lucide-react'
 import { format, startOfMonth, endOfMonth, isSameMonth, parseISO, subMonths } from 'date-fns'
 import { es } from 'date-fns/locale'
 import Link from 'next/link'
@@ -15,6 +15,7 @@ import { MetricsCard } from '@/components/dashboard/MetricsCard'
 import { SessionsChart } from '@/components/dashboard/SessionsChart'
 import { RevenueChart } from '@/components/dashboard/RevenueChart'
 import { ClientDistributionChart } from '@/components/dashboard/ClientDistributionChart'
+import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 
 interface DashboardData {
   activeClientsCount: number
@@ -30,6 +31,8 @@ interface DashboardData {
   revenueChartData: Array<{ month: string; revenue: number }>
   avgSessionsPerClient: number
   avgRevenuePerSession: number
+  pendingRequests: any[]
+  pendingRequestsCount: number
 }
 
 export default function DashboardPage() {
@@ -52,6 +55,13 @@ export default function DashboardPage() {
       }
 
       console.log('Dashboard: User authenticated, loading data...')
+
+      // Obtener coach_profile_id
+      const { data: profile } = await supabase
+        .from('coach_profiles')
+        .select('id')
+        .eq('user_id', user.id)
+        .single()
 
       const { data: clients } = await supabase
         .from('clients')
@@ -163,6 +173,23 @@ export default function DashboardPage() {
         ? Math.round(totalRevenue / totalCompletedSessions)
         : 0
 
+      // 🆕 Obtener solicitudes de coaching pendientes
+      let pendingRequests: any[] = []
+      let pendingRequestsCount = 0
+
+      if (profile) {
+        const { data: requests } = await supabase
+          .from('coaching_requests')
+          .select('*')
+          .eq('coach_profile_id', profile.id)
+          .eq('status', 'pending')
+          .order('created_at', { ascending: false })
+          .limit(3)
+
+        pendingRequests = requests || []
+        pendingRequestsCount = requests?.length || 0
+      }
+
       setData({
         activeClientsCount: activeClients.length,
         sessionsCompletedThisMonth: completedSessions.length,
@@ -177,6 +204,8 @@ export default function DashboardPage() {
         revenueChartData,
         avgSessionsPerClient,
         avgRevenuePerSession,
+        pendingRequests,
+        pendingRequestsCount,
       })
       setLoading(false)
     }
@@ -208,6 +237,15 @@ export default function DashboardPage() {
     { name: 'Completados', value: data.completedClientsCount },
   ]
 
+  const getInitials = (name: string) => {
+    return name
+      .split(' ')
+      .map(n => n[0])
+      .join('')
+      .toUpperCase()
+      .slice(0, 2)
+  }
+
   return (
     <DashboardLayout>
       <div className="space-y-8">
@@ -215,6 +253,35 @@ export default function DashboardPage() {
           <h1 className="text-3xl font-bold text-slate-900">Dashboard</h1>
           <p className="text-slate-600 mt-1">Bienvenido a tu panel de control</p>
         </div>
+
+        {/* 🆕 Alerta de solicitudes pendientes */}
+        {data.pendingRequestsCount > 0 && (
+          <Card className="border-yellow-200 bg-yellow-50">
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="p-3 bg-yellow-100 rounded-lg">
+                    <Bell className="h-6 w-6 text-yellow-600 animate-pulse" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-slate-900">
+                      Tienes {data.pendingRequestsCount} solicitud{data.pendingRequestsCount > 1 ? 'es' : ''} de coaching pendiente{data.pendingRequestsCount > 1 ? 's' : ''}
+                    </h3>
+                    <p className="text-sm text-slate-600">
+                      Revisa y responde a tus potenciales clientes
+                    </p>
+                  </div>
+                </div>
+                <Link href="/dashboard/coaching-requests">
+                  <Button>
+                    Ver Solicitudes
+                    <ArrowRight className="h-4 w-4 ml-2" />
+                  </Button>
+                </Link>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           <MetricsCard
@@ -273,12 +340,27 @@ export default function DashboardPage() {
             description="Esta semana"
           />
 
-          <MetricsCard
-            title="Total Clientes"
-            value={data.activeClientsCount + data.inactiveClientsCount + data.completedClientsCount}
-            icon={Users}
-            description="Histórico completo"
-          />
+          {/* 🆕 Card de solicitudes pendientes */}
+          <Link href="/dashboard/coaching-requests" className="block">
+            <Card className="h-full hover:shadow-md transition-shadow cursor-pointer border-2 border-transparent hover:border-blue-200">
+              <CardContent className="pt-6">
+                <div className="flex items-center gap-4">
+                  <div className="p-3 bg-blue-100 rounded-lg relative">
+                    <Mail className="h-6 w-6 text-blue-600" />
+                    {data.pendingRequestsCount > 0 && (
+                      <span className="absolute -top-1 -right-1 h-5 w-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">
+                        {data.pendingRequestsCount}
+                      </span>
+                    )}
+                  </div>
+                  <div>
+                    <p className="text-2xl font-bold">{data.pendingRequestsCount}</p>
+                    <p className="text-sm text-slate-600">Solicitudes Nuevas</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </Link>
         </div>
 
         <div className="grid gap-6 md:grid-cols-2">
@@ -287,6 +369,58 @@ export default function DashboardPage() {
         </div>
 
         <div className="grid gap-6 md:grid-cols-2">
+          {/* 🆕 Solicitudes de Coaching Card */}
+          {data.pendingRequests.length > 0 && (
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="flex items-center gap-2">
+                    <Mail className="h-5 w-5" />
+                    Solicitudes Recientes
+                  </CardTitle>
+                  <Badge variant="destructive">{data.pendingRequestsCount} nuevas</Badge>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  {data.pendingRequests.map((request: any) => (
+                    <Link 
+                      key={request.id}
+                      href="/dashboard/coaching-requests"
+                      className="block"
+                    >
+                      <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer">
+                        <div className="flex items-center gap-3">
+                          <Avatar className="h-10 w-10">
+                            <AvatarFallback className="bg-gradient-to-br from-blue-500 to-purple-600 text-white text-sm">
+                              {getInitials(request.client_name || 'C')}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div>
+                            <p className="font-medium text-slate-900">{request.client_name}</p>
+                            <p className="text-sm text-slate-600">{request.coaching_area}</p>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-xs text-slate-500">
+                            {format(new Date(request.created_at), "d MMM", { locale: es })}
+                          </p>
+                          <Badge variant="outline" className="mt-1">Pendiente</Badge>
+                        </div>
+                      </div>
+                    </Link>
+                  ))}
+                  <Button variant="outline" className="w-full" asChild>
+                    <Link href="/dashboard/coaching-requests">
+                      Ver Todas las Solicitudes
+                      <ArrowRight className="w-4 h-4 ml-2" />
+                    </Link>
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           <ClientDistributionChart data={clientDistributionData} />
 
           <Card>

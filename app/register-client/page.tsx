@@ -10,7 +10,6 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { useToast } from '@/hooks/use-toast'
 import { Loader2, UserCircle, Sparkles } from 'lucide-react'
-import Image from 'next/image'
 
 export default function RegisterClientPage() {
   const [name, setName] = useState('')
@@ -44,6 +43,7 @@ export default function RegisterClientPage() {
           data: {
             name,
             phone,
+            user_type: 'client', // Guardar tipo en metadata de auth también
           },
           emailRedirectTo: `${window.location.origin}/client-dashboard`,
         },
@@ -51,11 +51,17 @@ export default function RegisterClientPage() {
 
       if (authError) {
         let errorMessage = authError.message
+        
+        console.error('Auth error:', authError)
 
         if (authError.message.includes('User already registered')) {
           errorMessage = 'Este email ya está registrado. Por favor inicia sesión.'
+        } else if (authError.message.includes('already been registered')) {
+          errorMessage = 'Este email ya está registrado. Por favor inicia sesión.'
         } else if (authError.message.includes('Password should be at least')) {
           errorMessage = 'La contraseña debe tener al menos 6 caracteres'
+        } else if (authError.message.includes('Invalid email')) {
+          errorMessage = 'El formato del email no es válido'
         }
 
         toast({
@@ -63,30 +69,38 @@ export default function RegisterClientPage() {
           title: 'Error al registrarse',
           description: errorMessage,
         })
+        setIsLoading(false)
         return
       }
 
       if (authData.user) {
-        // Wait a bit for the trigger to create the user record
-        await new Promise(resolve => setTimeout(resolve, 1000))
+        console.log('✅ Usuario autenticado:', authData.user.id)
+        
+        // Wait a bit for any triggers to run
+        await new Promise(resolve => setTimeout(resolve, 1500))
 
         // Check if user exists in public.users table
         const { data: existingUser, error: checkError } = await supabase
           .from('users')
-          .select('id')
+          .select('id, user_type, role')
           .eq('id', authData.user.id)
           .maybeSingle()
 
+        console.log('Check existing user:', { existingUser, checkError })
+
         // If user doesn't exist, create it as CLIENT
         if (!existingUser && !checkError) {
+          console.log('Creando nuevo usuario cliente...')
+          
           const { error: insertError } = await supabase
             .from('users')
             .insert({
               id: authData.user.id,
               email,
               full_name: name,
-              role: 'coach', // Keep role as coach for compatibility with existing system
-              user_type: 'client', // CRITICAL: This marks user as CLIENT (not coach)
+              phone: phone || null,
+              role: 'client',      // ✅ CORREGIDO: Ahora es 'client'
+              user_type: 'client', // ✅ Consistente con role
               subscription_plan: 'starter',
               subscription_status: 'active',
             })
@@ -96,34 +110,43 @@ export default function RegisterClientPage() {
             toast({
               variant: 'destructive',
               title: 'Error',
-              description: 'Hubo un problema al crear tu perfil',
+              description: `Error al crear perfil: ${insertError.message}`,
             })
+            setIsLoading(false)
             return
           }
 
-          console.log('✅ Cliente creado exitosamente con user_type=client')
+          console.log('✅ Cliente creado exitosamente con role=client y user_type=client')
         } else if (existingUser) {
-          // If user exists but registered as coach by mistake, update to client
-          const { error: updateError } = await supabase
-            .from('users')
-            .update({
-              user_type: 'client',
-              full_name: name,
-            })
-            .eq('id', authData.user.id)
+          console.log('Usuario ya existe, verificando tipo...')
+          
+          // If user exists but not properly set as client, update both fields
+          if (existingUser.user_type !== 'client' || existingUser.role !== 'client') {
+            console.log('Actualizando usuario a cliente...')
+            
+            const { error: updateError } = await supabase
+              .from('users')
+              .update({
+                role: 'client',      // ✅ Actualizar ambos campos
+                user_type: 'client',
+                full_name: name,
+                phone: phone || null,
+              })
+              .eq('id', authData.user.id)
 
-          if (updateError) {
-            console.error('Error updating user type:', updateError)
-          }
+            if (updateError) {
+              console.error('Error updating user type:', updateError)
+            } else {
+              console.log('✅ Usuario actualizado a cliente')
+            }
 
-          // Delete coach_profile if it exists
-          const { error: deleteProfileError } = await supabase
-            .from('coach_profiles')
-            .delete()
-            .eq('user_id', authData.user.id)
-
-          if (!deleteProfileError) {
-            console.log('✅ Coach profile eliminado (usuario convertido a cliente)')
+            // Delete coach_profile if it exists (cleanup)
+            await supabase
+              .from('coach_profiles')
+              .delete()
+              .eq('user_id', authData.user.id)
+          } else {
+            console.log('✅ Usuario ya es cliente correctamente configurado')
           }
         }
 
@@ -156,8 +179,14 @@ export default function RegisterClientPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-[url('/grid.svg')] bg-center [mask-image:linear-gradient(180deg,white,rgba(255,255,255,0))]"></div>
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center p-4 relative overflow-hidden">
+      {/* Grid pattern */}
+      <div className="absolute inset-0 opacity-20">
+        <div className="absolute inset-0" style={{
+          backgroundImage: 'linear-gradient(rgba(255,255,255,.05) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.05) 1px, transparent 1px)',
+          backgroundSize: '50px 50px'
+        }}></div>
+      </div>
       
       <Card className="w-full max-w-lg relative z-10 border-purple-500/20 bg-slate-900/90 backdrop-blur-xl">
         <CardHeader className="text-center space-y-2">

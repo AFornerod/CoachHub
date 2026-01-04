@@ -5,51 +5,73 @@ import { createClient } from '@/lib/supabase/client'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { Skeleton } from '@/components/ui/skeleton'
 import { 
   Calendar, 
   Clock, 
   User, 
   CheckCircle2, 
-  XCircle, 
-  AlertCircle,
+  Star,
   TrendingUp,
   MessageSquare,
-  Star
+  ArrowRight,
+  Search,
+  Users,
+  CalendarDays,
+  Target
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { format } from 'date-fns'
+import { es } from 'date-fns/locale'
 
-interface Booking {
+interface CoachProfile {
+  user_id: string
+  display_name: string
+  avatar_url: string
+  specializations: string[]
+}
+
+interface CoachRelationship {
   id: string
   coach_id: string
   status: string
-  start_date: string | null
-  total_sessions: number
-  completed_sessions: number
+  start_date: string
+  total_sessions_purchased: number
+  sessions_completed: number
+  sessions_remaining: number
   session_rate: number
-  coach_profile: {
-    display_name: string
-    avatar_url: string
-    specializations: string[]
-  }
+  coaching_focus: string
+  // Datos del coach agregados manualmente
+  coach_display_name?: string
+  coach_avatar_url?: string
+  coach_specializations?: string[]
 }
 
-interface Request {
+interface Session {
   id: string
+  scheduled_date: string  // ✅ CORREGIDO: era 'date'
   status: string
-  coaching_area: string
-  created_at: string
-  coach_profile: {
-    display_name: string
-    avatar_url: string
-  }
+  session_type: string
+  duration: number  // ✅ CORREGIDO: cambié duration_minutes a duration para consistencia
+  notes: string
+  coach_id: string
+  coach_display_name?: string
+  coach_avatar_url?: string
 }
 
 export default function ClientDashboardPage() {
-  const [bookings, setBookings] = useState<Booking[]>([])
-  const [requests, setRequests] = useState<Request[]>([])
+  const [coaches, setCoaches] = useState<CoachRelationship[]>([])
+  const [recentSessions, setRecentSessions] = useState<Session[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [userData, setUserData] = useState<any>(null)
+  const [stats, setStats] = useState({
+    totalCoaches: 0,
+    completedSessions: 0,
+    upcomingSessions: 0,
+    avgRating: '-'
+  })
   const supabase = createClient()
   const router = useRouter()
 
@@ -59,45 +81,118 @@ export default function ClientDashboardPage() {
 
   async function loadData() {
     try {
-      // Get current user
+      // Obtener usuario actual
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) {
         router.push('/login')
         return
       }
 
-      // Get user data
-      const { data: userInfo } = await supabase
+      console.log('Loading dashboard for user:', user.id)
+
+      // Obtener perfil del usuario
+      const { data: profile } = await supabase
         .from('users')
         .select('*')
         .eq('id', user.id)
         .single()
 
-      setUserData(userInfo)
+      setUserData(profile)
 
-      // Get bookings
-      const { data: bookingsData } = await supabase
-        .from('client_bookings')
-        .select(`
-          *,
-          coach_profile:coach_profiles(display_name, avatar_url, specializations)
-        `)
-        .eq('client_id', user.id)
-        .order('created_at', { ascending: false })
+      // ✅ CORREGIDO: Primero obtener el client_id de la tabla clients
+      const { data: clientRecord } = await supabase
+        .from('clients')
+        .select('id')
+        .eq('user_id', user.id)
+        .single()
 
-      setBookings(bookingsData || [])
+      if (!clientRecord) {
+        console.error('No client record found')
+        setIsLoading(false)
+        return
+      }
 
-      // Get coaching requests
-      const { data: requestsData } = await supabase
-        .from('coaching_requests')
-        .select(`
-          *,
-          coach_profile:coach_profiles(display_name, avatar_url)
-        `)
-        .eq('client_id', user.id)
-        .order('created_at', { ascending: false })
+      console.log('Client record:', clientRecord)
 
-      setRequests(requestsData || [])
+      // 1. Obtener relaciones coach-cliente usando client_id correcto
+      const { data: relations, error: relError } = await supabase
+        .from('coach_client_relationships')
+        .select('*')
+        .eq('client_id', clientRecord.id)  // ✅ CORREGIDO: usar clientRecord.id
+        .eq('status', 'active')
+        .order('start_date', { ascending: false })
+
+      console.log('Coach relations:', relations, 'Error:', relError)
+
+      // 2. Si hay relaciones, obtener los perfiles de los coaches
+      if (relations && relations.length > 0) {
+        const coachIds = relations.map(r => r.coach_id)
+        
+        const { data: coachProfiles, error: cpError } = await supabase
+          .from('coach_profiles')
+          .select('user_id, display_name, avatar_url, specializations')
+          .in('user_id', coachIds)
+
+        console.log('Coach profiles:', coachProfiles, 'Error:', cpError)
+
+        // Combinar relaciones con perfiles
+        const coachesWithProfiles = relations.map(rel => {
+          const profile = coachProfiles?.find(cp => cp.user_id === rel.coach_id)
+          return {
+            ...rel,
+            coach_display_name: profile?.display_name || 'Coach',
+            coach_avatar_url: profile?.avatar_url || '',
+            coach_specializations: profile?.specializations || []
+          }
+        })
+
+        setCoaches(coachesWithProfiles)
+        setStats(prev => ({ ...prev, totalCoaches: coachesWithProfiles.length }))
+      }
+
+      // 3. Obtener sesiones recientes usando client_id correcto
+      const { data: sessions, error: sessError } = await supabase
+        .from('sessions')
+        .select('*')
+        .eq('client_id', clientRecord.id)  // ✅ CORREGIDO: usar clientRecord.id
+        .order('scheduled_date', { ascending: false })  // ✅ CORREGIDO: era 'date'
+        .limit(5)
+
+      console.log('Sessions:', sessions, 'Error:', sessError)
+
+      if (sessions && sessions.length > 0) {
+        // Obtener perfiles de coaches de las sesiones
+        const sessionCoachIds = [...new Set(sessions.map(s => s.coach_id))]
+        
+        const { data: sessionCoachProfiles } = await supabase
+          .from('coach_profiles')
+          .select('user_id, display_name, avatar_url')
+          .in('user_id', sessionCoachIds)
+
+        // Combinar sesiones con perfiles
+        const sessionsWithCoaches = sessions.map(session => {
+          const coachProfile = sessionCoachProfiles?.find(cp => cp.user_id === session.coach_id)
+          return {
+            ...session,
+            coach_display_name: coachProfile?.display_name || 'Coach',
+            coach_avatar_url: coachProfile?.avatar_url || ''
+          }
+        })
+
+        setRecentSessions(sessionsWithCoaches)
+
+        // Calcular estadísticas
+        const completed = sessions.filter(s => s.status === 'completed').length
+        const upcoming = sessions.filter(s => 
+          s.status === 'scheduled' && new Date(s.scheduled_date) > new Date()  // ✅ CORREGIDO: era s.date
+        ).length
+        
+        setStats(prev => ({
+          ...prev,
+          completedSessions: completed,
+          upcomingSessions: upcoming
+        }))
+      }
 
     } catch (error) {
       console.error('Error loading data:', error)
@@ -106,40 +201,45 @@ export default function ClientDashboardPage() {
     }
   }
 
-  const getStatusBadge = (status: string) => {
-    const variants: Record<string, { variant: any; icon: any; label: string }> = {
-      pending: { variant: 'outline', icon: AlertCircle, label: 'Pendiente' },
-      active: { variant: 'default', icon: CheckCircle2, label: 'Activo' },
-      completed: { variant: 'secondary', icon: CheckCircle2, label: 'Completado' },
-      cancelled: { variant: 'destructive', icon: XCircle, label: 'Cancelado' },
-      accepted: { variant: 'default', icon: CheckCircle2, label: 'Aceptado' },
-      rejected: { variant: 'destructive', icon: XCircle, label: 'Rechazado' },
-    }
-
-    const config = variants[status] || variants.pending
-    const Icon = config.icon
-
-    return (
-      <Badge variant={config.variant} className="gap-1">
-        <Icon className="w-3 h-3" />
-        {config.label}
-      </Badge>
-    )
+  const getInitials = (name: string) => {
+    return name
+      .split(' ')
+      .map(n => n[0])
+      .join('')
+      .toUpperCase()
+      .slice(0, 2)
   }
 
-  const stats = {
-    activeBookings: bookings.filter(b => b.status === 'active').length,
-    totalSessions: bookings.reduce((sum, b) => sum + b.total_sessions, 0),
-    completedSessions: bookings.reduce((sum, b) => sum + b.completed_sessions, 0),
-    pendingRequests: requests.filter(r => r.status === 'pending').length,
+  const getStatusBadge = (status: string) => {
+    const statusConfig: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' }> = {
+      scheduled: { label: 'Programada', variant: 'default' },
+      completed: { label: 'Completada', variant: 'secondary' },
+      cancelled: { label: 'Cancelada', variant: 'destructive' },
+      'in-progress': { label: 'En Progreso', variant: 'outline' }
+    }
+    const config = statusConfig[status] || { label: status, variant: 'outline' }
+    return <Badge variant={config.variant}>{config.label}</Badge>
+  }
+
+  const formatSessionDate = (dateString: string) => {
+    const date = new Date(dateString)
+    return format(date, "d 'de' MMMM, yyyy - HH:mm", { locale: es })
   }
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-slate-600">Cargando dashboard...</p>
+      <div className="min-h-screen bg-slate-50 p-8">
+        <div className="max-w-7xl mx-auto">
+          <Skeleton className="h-12 w-64 mb-8" />
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+            {[...Array(4)].map((_, i) => (
+              <Skeleton key={i} className="h-32" />
+            ))}
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <Skeleton className="h-96" />
+            <Skeleton className="h-96" />
+          </div>
         </div>
       </div>
     )
@@ -147,35 +247,28 @@ export default function ClientDashboardPage() {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      {/* Header */}
-      <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-bold">¡Hola, {userData?.full_name || 'Cliente'}!</h1>
-              <p className="text-blue-100 mt-1">Gestiona tus sesiones de coaching</p>
-            </div>
-            <Link href="/marketplace">
-              <Button variant="secondary">
-                Buscar Coaches
-              </Button>
-            </Link>
-          </div>
+      <div className="max-w-7xl mx-auto p-8">
+        {/* Header */}
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-slate-900 mb-2">
+            ¡Hola, {userData?.full_name?.split(' ')[0]}! 👋
+          </h1>
+          <p className="text-slate-600">
+            Aquí está el resumen de tu progreso de coaching
+          </p>
         </div>
-      </div>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Stats Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
           <Card>
             <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-slate-600">Coaches Activos</p>
-                  <p className="text-3xl font-bold text-slate-900 mt-1">{stats.activeBookings}</p>
+              <div className="flex items-center gap-4">
+                <div className="p-3 bg-blue-100 rounded-lg">
+                  <Users className="h-6 w-6 text-blue-600" />
                 </div>
-                <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
-                  <User className="w-6 h-6 text-blue-600" />
+                <div>
+                  <p className="text-2xl font-bold">{stats.totalCoaches}</p>
+                  <p className="text-sm text-slate-600">Coaches Activos</p>
                 </div>
               </div>
             </CardContent>
@@ -183,13 +276,13 @@ export default function ClientDashboardPage() {
 
           <Card>
             <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-slate-600">Sesiones Totales</p>
-                  <p className="text-3xl font-bold text-slate-900 mt-1">{stats.totalSessions}</p>
+              <div className="flex items-center gap-4">
+                <div className="p-3 bg-green-100 rounded-lg">
+                  <CheckCircle2 className="h-6 w-6 text-green-600" />
                 </div>
-                <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
-                  <Calendar className="w-6 h-6 text-green-600" />
+                <div>
+                  <p className="text-2xl font-bold">{stats.completedSessions}</p>
+                  <p className="text-sm text-slate-600">Sesiones Completadas</p>
                 </div>
               </div>
             </CardContent>
@@ -197,13 +290,13 @@ export default function ClientDashboardPage() {
 
           <Card>
             <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-slate-600">Completadas</p>
-                  <p className="text-3xl font-bold text-slate-900 mt-1">{stats.completedSessions}</p>
+              <div className="flex items-center gap-4">
+                <div className="p-3 bg-purple-100 rounded-lg">
+                  <CalendarDays className="h-6 w-6 text-purple-600" />
                 </div>
-                <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center">
-                  <CheckCircle2 className="w-6 h-6 text-purple-600" />
+                <div>
+                  <p className="text-2xl font-bold">{stats.upcomingSessions}</p>
+                  <p className="text-sm text-slate-600">Próximas Sesiones</p>
                 </div>
               </div>
             </CardContent>
@@ -211,63 +304,96 @@ export default function ClientDashboardPage() {
 
           <Card>
             <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-slate-600">Solicitudes Pendientes</p>
-                  <p className="text-3xl font-bold text-slate-900 mt-1">{stats.pendingRequests}</p>
+              <div className="flex items-center gap-4">
+                <div className="p-3 bg-yellow-100 rounded-lg">
+                  <Star className="h-6 w-6 text-yellow-600" />
                 </div>
-                <div className="w-12 h-12 bg-amber-100 rounded-lg flex items-center justify-center">
-                  <Clock className="w-6 h-6 text-amber-600" />
+                <div>
+                  <p className="text-2xl font-bold">{stats.avgRating}</p>
+                  <p className="text-sm text-slate-600">Calificación Promedio</p>
                 </div>
               </div>
             </CardContent>
           </Card>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        {/* Contenido Principal */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Mis Coaches */}
           <Card>
             <CardHeader>
-              <CardTitle>Mis Coaches</CardTitle>
-              <CardDescription>Coaches con los que estás trabajando actualmente</CardDescription>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <Users className="h-5 w-5" />
+                    Mis Coaches
+                  </CardTitle>
+                  <CardDescription>
+                    Coaches con los que estás trabajando actualmente
+                  </CardDescription>
+                </div>
+                {coaches.length > 0 && (
+                  <Link href="/client-dashboard/coaches">
+                    <Button variant="ghost" size="sm" className="text-blue-600">
+                      Ver todos
+                      <ArrowRight className="w-4 h-4 ml-1" />
+                    </Button>
+                  </Link>
+                )}
+              </div>
             </CardHeader>
             <CardContent>
-              {bookings.length === 0 ? (
-                <div className="text-center py-12">
-                  <User className="w-12 h-12 text-slate-300 mx-auto mb-4" />
+              {coaches.length === 0 ? (
+                <div className="text-center py-8">
+                  <User className="h-12 w-12 text-slate-300 mx-auto mb-4" />
                   <p className="text-slate-600 mb-4">Aún no tienes coaches contratados</p>
                   <Link href="/marketplace">
-                    <Button>Buscar Coaches</Button>
+                    <Button>
+                      <Search className="w-4 h-4 mr-2" />
+                      Buscar Coaches
+                    </Button>
                   </Link>
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {bookings.map((booking) => (
-                    <div key={booking.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-slate-50">
+                  {coaches.map((relation) => (
+                    <div 
+                      key={relation.id}
+                      className="flex items-center justify-between p-4 bg-slate-50 rounded-lg hover:bg-slate-100 transition-colors"
+                    >
                       <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-bold">
-                          {booking.coach_profile.display_name.charAt(0)}
-                        </div>
+                        <Avatar className="h-12 w-12">
+                          <AvatarImage src={relation.coach_avatar_url} />
+                          <AvatarFallback className="bg-gradient-to-br from-blue-500 to-purple-600 text-white">
+                            {getInitials(relation.coach_display_name || 'C')}
+                          </AvatarFallback>
+                        </Avatar>
                         <div>
-                          <p className="font-semibold text-slate-900">{booking.coach_profile.display_name}</p>
-                          <p className="text-sm text-slate-600">
-                            {booking.completed_sessions} / {booking.total_sessions} sesiones
+                          <p className="font-semibold text-slate-900">
+                            {relation.coach_display_name}
                           </p>
-                          <div className="flex gap-2 mt-1">
-                            {booking.coach_profile.specializations?.slice(0, 2).map((spec, idx) => (
-                              <Badge key={idx} variant="secondary" className="text-xs">
-                                {spec}
-                              </Badge>
-                            ))}
+                          <p className="text-sm text-slate-600">
+                            {relation.coaching_focus || relation.coach_specializations?.[0] || 'Coaching'}
+                          </p>
+                          <div className="flex items-center gap-4 mt-1 text-xs text-slate-500">
+                            <span className="flex items-center gap-1">
+                              <CheckCircle2 className="h-3 w-3" />
+                              {relation.sessions_completed} completadas
+                            </span>
+                            <span className="flex items-center gap-1">
+                              <Calendar className="h-3 w-3" />
+                              {relation.sessions_remaining} restantes
+                            </span>
                           </div>
                         </div>
                       </div>
-                      <div className="flex flex-col items-end gap-2">
-                        {getStatusBadge(booking.status)}
-                        <Button size="sm" variant="outline">
-                          <MessageSquare className="w-3 h-3 mr-1" />
-                          Contactar
-                        </Button>
+                      <div className="text-right">
+                        <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                          Activo
+                        </Badge>
+                        <p className="text-xs text-slate-500 mt-1">
+                          Desde {format(new Date(relation.start_date), "MMM yyyy", { locale: es })}
+                        </p>
                       </div>
                     </div>
                   ))}
@@ -276,39 +402,73 @@ export default function ClientDashboardPage() {
             </CardContent>
           </Card>
 
-          {/* Solicitudes */}
+          {/* Mis Sesiones */}
           <Card>
             <CardHeader>
-              <CardTitle>Mis Solicitudes</CardTitle>
-              <CardDescription>Solicitudes enviadas a coaches</CardDescription>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <Calendar className="h-5 w-5" />
+                    Mis Sesiones
+                  </CardTitle>
+                  <CardDescription>
+                    Tus sesiones más recientes
+                  </CardDescription>
+                </div>
+                {recentSessions.length > 0 && (
+                  <Link href="/client-dashboard/sessions">
+                    <Button variant="ghost" size="sm" className="text-blue-600">
+                      Ver todas
+                      <ArrowRight className="w-4 h-4 ml-1" />
+                    </Button>
+                  </Link>
+                )}
+              </div>
             </CardHeader>
             <CardContent>
-              {requests.length === 0 ? (
-                <div className="text-center py-12">
-                  <MessageSquare className="w-12 h-12 text-slate-300 mx-auto mb-4" />
-                  <p className="text-slate-600 mb-4">No has enviado solicitudes aún</p>
+              {recentSessions.length === 0 ? (
+                <div className="text-center py-8">
+                  <Calendar className="h-12 w-12 text-slate-300 mx-auto mb-4" />
+                  <p className="text-slate-600 mb-4">No tienes sesiones programadas aún</p>
                   <Link href="/marketplace">
-                    <Button>Explorar Coaches</Button>
+                    <Button>
+                      <Search className="w-4 h-4 mr-2" />
+                      Explorar Coaches
+                    </Button>
                   </Link>
                 </div>
               ) : (
-                <div className="space-y-4">
-                  {requests.map((request) => (
-                    <div key={request.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-slate-50">
-                      <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-bold">
-                          {request.coach_profile.display_name.charAt(0)}
+                <div className="space-y-3">
+                  {recentSessions.map((session) => (
+                    <Link 
+                      key={session.id}
+                      href={`/client-dashboard/sessions/${session.id}`}
+                      className="block"
+                    >
+                      <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer">
+                        <div className="flex items-center gap-3">
+                          <Avatar className="h-10 w-10">
+                            <AvatarImage src={session.coach_avatar_url} />
+                            <AvatarFallback className="bg-gradient-to-br from-blue-500 to-purple-600 text-white text-sm">
+                              {getInitials(session.coach_display_name || 'C')}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div>
+                            <p className="font-medium text-slate-900">
+                              {session.coach_display_name}
+                            </p>
+                            <div className="flex items-center gap-2 text-xs text-slate-500">
+                              <Calendar className="h-3 w-3" />
+                              {formatSessionDate(session.scheduled_date)}  {/* ✅ CORREGIDO: era session.date */}
+                            </div>
+                          </div>
                         </div>
-                        <div>
-                          <p className="font-semibold text-slate-900">{request.coach_profile.display_name}</p>
-                          <p className="text-sm text-slate-600">{request.coaching_area}</p>
-                          <p className="text-xs text-slate-500 mt-1">
-                            {new Date(request.created_at).toLocaleDateString()}
-                          </p>
+                        <div className="flex items-center gap-2">
+                          {getStatusBadge(session.status)}
+                          <ArrowRight className="h-4 w-4 text-slate-400" />
                         </div>
                       </div>
-                      {getStatusBadge(request.status)}
-                    </div>
+                    </Link>
                   ))}
                 </div>
               )}
@@ -316,27 +476,28 @@ export default function ClientDashboardPage() {
           </Card>
         </div>
 
-        {/* Empty State */}
-        {bookings.length === 0 && requests.length === 0 && (
-          <Card className="mt-8 bg-gradient-to-br from-blue-50 to-purple-50 border-blue-200">
-            <CardContent className="pt-12 pb-12 text-center">
+        {/* CTA Section */}
+        <Card className="mt-8 bg-gradient-to-r from-blue-50 to-purple-50 border-none">
+          <CardContent className="py-12">
+            <div className="text-center">
               <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-purple-600 rounded-2xl flex items-center justify-center mx-auto mb-6">
-                <TrendingUp className="w-8 h-8 text-white" />
+                <TrendingUp className="h-8 w-8 text-white" />
               </div>
               <h3 className="text-2xl font-bold text-slate-900 mb-2">
-                ¡Comienza tu viaje de crecimiento!
+                ¡Continúa tu viaje de crecimiento!
               </h3>
               <p className="text-slate-600 mb-6 max-w-md mx-auto">
-                Explora nuestro marketplace y encuentra el coach perfecto para alcanzar tus metas
+                Explora nuestro marketplace y encuentra más coaches que te ayuden a alcanzar tus metas
               </p>
               <Link href="/marketplace">
                 <Button size="lg" className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700">
+                  <Search className="w-5 h-5 mr-2" />
                   Explorar Coaches
                 </Button>
               </Link>
-            </CardContent>
-          </Card>
-        )}
+            </div>
+          </CardContent>
+        </Card>
       </div>
     </div>
   )

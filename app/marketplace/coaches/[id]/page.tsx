@@ -81,21 +81,31 @@ export default function CoachProfilePage() {
     setIsLoading(true);
     const supabase = createClient();
 
-    const [profileRes, reviewsRes] = await Promise.all([
-      supabase
+    // ✅ Primero intentar buscar por user_id (desde client dashboard)
+    let profileRes = await supabase
+      .from("coach_profiles")
+      .select("*")
+      .eq("user_id", coachId)
+      .eq("is_public", true)
+      .maybeSingle();
+
+    // ✅ Si no encuentra, buscar por id (desde marketplace)
+    if (!profileRes.data) {
+      profileRes = await supabase
         .from("coach_profiles")
         .select("*")
         .eq("id", coachId)
         .eq("is_public", true)
-        .maybeSingle(),
-      supabase
-        .from("coach_reviews")
-        .select("*")
-        .eq("coach_profile_id", coachId)
-        .eq("is_public", true)
-        .order("created_at", { ascending: false })
-        .limit(10),
-    ]);
+        .maybeSingle();
+    }
+
+    const reviewsRes = await supabase
+      .from("coach_reviews")
+      .select("*")
+      .eq("coach_profile_id", profileRes.data?.id || coachId)
+      .eq("is_public", true)
+      .order("created_at", { ascending: false })
+      .limit(10);
 
     if (profileRes.data) {
       setCoach(profileRes.data);

@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { useToast } from '@/hooks/use-toast'
-import { Loader2, Brain, Sparkles } from 'lucide-react'
+import { Loader2, Sparkles } from 'lucide-react'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
@@ -51,16 +51,37 @@ export default function LoginPage() {
         return
       }
 
-      if (data.session) {
-        console.log('Login successful, session:', data.session)
+      if (data.session && data.user) {
+        console.log('Login successful, checking user type...')
+        
+        // ✅ NUEVO: Obtener el tipo de usuario para redirigir correctamente
+        const { data: userProfile, error: profileError } = await supabase
+          .from('users')
+          .select('user_type, role, full_name')
+          .eq('id', data.user.id)
+          .single()
+
+        console.log('User profile:', userProfile)
+
+        if (profileError) {
+          console.error('Error fetching user profile:', profileError)
+        }
+
         toast({
-          title: 'Éxito',
-          description: 'Inicio de sesión exitoso',
+          title: '¡Bienvenido!',
+          description: `Inicio de sesión exitoso${userProfile?.full_name ? `, ${userProfile.full_name}` : ''}`,
         })
 
         await new Promise(resolve => setTimeout(resolve, 100))
-        console.log('Redirecting to dashboard...')
-        window.location.href = '/dashboard'
+
+        // ✅ NUEVO: Redirigir según el tipo de usuario
+        if (userProfile?.user_type === 'client') {
+          console.log('Redirecting to client dashboard...')
+          window.location.href = '/client-dashboard'
+        } else {
+          console.log('Redirecting to coach dashboard...')
+          window.location.href = '/dashboard'
+        }
       } else {
         console.log('No session in response')
         setIsLoading(false)
@@ -112,7 +133,7 @@ export default function LoginPage() {
                 <Input
                   id="email"
                   type="email"
-                  placeholder="coach@ejemplo.com"
+                  placeholder="tu@email.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
@@ -146,12 +167,20 @@ export default function LoginPage() {
                   'Iniciar Sesión'
                 )}
               </Button>
-              <p className="text-sm text-center text-muted-foreground">
-                ¿No tienes una cuenta?{' '}
-                <Link href="/register" className="text-primary hover:underline">
-                  Regístrate aquí
-                </Link>
-              </p>
+              <div className="text-sm text-center space-y-2">
+                <p className="text-muted-foreground">
+                  ¿No tienes una cuenta?
+                </p>
+                <div className="flex justify-center gap-4">
+                  <Link href="/register-client" className="text-blue-600 hover:underline font-medium">
+                    Busco un Coach
+                  </Link>
+                  <span className="text-muted-foreground">|</span>
+                  <Link href="/register" className="text-purple-600 hover:underline font-medium">
+                    Soy Coach
+                  </Link>
+                </div>
+              </div>
             </CardFooter>
           </form>
         </Card>
