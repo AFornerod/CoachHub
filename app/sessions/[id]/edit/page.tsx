@@ -50,7 +50,7 @@ export default function EditSessionPage() {
     duration: 60,
     status: 'scheduled',
     session_type: 'online',
-    notes: '',
+    notes?: string;
     client_id: '',
   });
 
