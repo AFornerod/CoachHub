@@ -129,7 +129,7 @@ const clientId = Array.isArray(rawId) ? rawId[0] : rawId
 
       <div className="mb-8">
         <h1 className="text-3xl font-bold">Nueva Evaluación de Competencias</h1>
-        <p className="text-gray-600 mt-2">Cliente: {client.full_name}</p>
+        <p className="text-gray-600 mt-2">Cliente: {(client as any).full_name} </p>
       </div>
 
       {!selectedFramework ? (
