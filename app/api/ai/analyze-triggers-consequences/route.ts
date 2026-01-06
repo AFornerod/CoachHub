@@ -99,8 +99,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Análisis básico de triggers y consecuencias
-    const triggers = [];
-    const consequences = [];
+	const triggers: string[] = [];
+	const consequences: string[] = [];
     const insights = [
       {
         type: 'info',
