@@ -1,24 +1,25 @@
-import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { headers } from 'next/headers'
+import { createServerClient, type CookieOptions } from '@supabase/ssr'
+import { cookies } from 'next/headers'
 
 export function createClient() {
-  const headersList = headers()
-  const accessToken = headersList.get('x-access-token')
+  const cookieStore = cookies()
 
-  return createSupabaseClient(
+  return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
-      global: {
-        headers: accessToken ? {
-          Authorization: `Bearer ${accessToken}`
-        } : {}
+      cookies: {
+        get(name: string) {
+          return cookieStore.get(name)?.value
+        },
+        set(name: string, value: string, options: CookieOptions) {
+          cookieStore.set({ name, value, ...options })
+        },
+        remove(name: string, options: CookieOptions) {
+          cookieStore.set({ name, value: '', ...options })
+        },
       },
-      auth: {
-        persistSession: false,
-        autoRefreshToken: false,
-        detectSessionInUrl: false
-      }
     }
   )
 }

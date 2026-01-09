@@ -19,24 +19,15 @@ SET search_path = public
 LANGUAGE plpgsql
 AS $$
 BEGIN
-INSERT INTO public.users (
-  id, 
-  email, 
-  full_name,  -- Cambio de 'name' a 'full_name'
-  role, 
-  user_type,
-  subscription_plan, 
-  subscription_status
-)
-VALUES (
-  NEW.id,
-  NEW.email,
-  COALESCE(NEW.raw_user_meta_data->>'name', ''),
-  COALESCE(NEW.raw_user_meta_data->>'user_type', 'coach'),  -- Respetar user_type
-  COALESCE(NEW.raw_user_meta_data->>'user_type', 'coach'),
-  'starter',
-  'active'  -- Cambiar de 'trial' a 'active' para mejor UX
-)
+  INSERT INTO public.users (id, email, name, role, subscription_plan, subscription_status)
+  VALUES (
+    NEW.id,
+    NEW.email,
+    COALESCE(NEW.raw_user_meta_data->>'name', ''),
+    'coach',
+    'starter',
+    'trial'
+  )
   ON CONFLICT (id) DO NOTHING;
   
   RETURN NEW;

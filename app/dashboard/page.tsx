@@ -54,6 +54,30 @@ export default function DashboardPage() {
         return
       }
 
+// ============================================
+// VERIFICACIÓN DE SUSCRIPCIÓN
+// ============================================
+console.log('Dashboard: Checking subscription status...')
+
+const { data: subscription, error: subError } = await supabase
+  .from('subscriptions')
+  .select('status')
+  .eq('user_id', user.id)
+  .eq('status', 'active')
+  .maybeSingle()
+
+if (subError) {
+  console.error('Dashboard: Error checking subscription:', subError)
+}
+
+if (!subscription) {
+  console.log('Dashboard: No active subscription found, redirecting to /subscription')
+  router.push('/subscription')
+  return
+}
+
+console.log('Dashboard: Active subscription found:', subscription.status)
+
       console.log('Dashboard: User authenticated, loading data...')
 
       // Obtener coach_profile_id

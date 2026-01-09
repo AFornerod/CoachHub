@@ -264,7 +264,7 @@ export default function RegisterCoachPage() {
             title: '¡Bienvenido!',
             description: 'Tu cuenta de coach ha sido creada exitosamente',
           })
-          router.push('/subscription')
+          router.push('/dashboard')
           router.refresh()
         } else {
           toast({
