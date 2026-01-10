@@ -1,4 +1,5 @@
 export type CoachingType =
+  | 'athernus'
   | 'personal'
   | 'organizacional_ejecutivo'
   | 'organizacional_equipos'
